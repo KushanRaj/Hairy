@@ -2,3 +2,5 @@ celeba_hq
 test.ipynb
 __pycache__
 __pycache__
+logdir
+epochs

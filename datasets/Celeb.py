@@ -23,13 +23,6 @@ class CelebData(Dataset):
         self.female = os.listdir(os.path.join(self.root,'female'))
         self.data = np.array(self.female + self.male)
         
-        #self.data = np.concatenate((np.zeros(len(self.female)), np.ones(len(self.male))))
-        '''
-        self.data = np.stack((people,domain)).T
-        
-        self.data = data[:,np.argsort(data[0])].T
-        np.random.shuffle(self.data)
-        '''
     def load_image(self,idx):
 
         _class = 0 

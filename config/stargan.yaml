@@ -1,8 +1,6 @@
-dataset : "semantickitti"
+dataset : "Celeb"
 root : "D:/Python/celeba_hq"
 model : "StarGAN"
-transform : "spherical_proj"
-normalise : True
 img_size : 256
 batch_size : 8
 num_workers : 1
@@ -16,4 +14,7 @@ num_domains : 2
 classes : {0 : "female",
            1 : "male"}
 num_workers : 1
+SPLIT : ['val','train']
+parameter : "D:/Python/HairstyleGAN/epochs"
+valid_every : 5
 

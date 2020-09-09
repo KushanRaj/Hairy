@@ -74,6 +74,7 @@ class AdaIN(nn.Module):
         h = self.fc(s)
         h = h.view(h.size(0), h.size(1), 1, 1)
         gamma, beta = torch.chunk(h, chunks=2, dim=1)
+        
         return (1 + gamma) * self.norm(x) + beta
 
 class ResBlock(nn.Module):
@@ -122,7 +123,7 @@ class MappingNetwork(nn.Module):
             for i in self.unshared:
                 output.append(i(z))
             output = torch.stack(output,1) 
-             
+            
             return output
 
 class Generator(nn.Module):
@@ -221,28 +222,28 @@ class Model(nn.Module):
     def forward(self,img,domain,og_domain,z=None,x=None):
 
         assert (z is None) != (x is None)
-
+        output = torch.arange(0,domain.size(0))
         if z:
             z1,z2 = z
-            l = self.map(z1)[:,domain].view(-1,self.style_dim)
-            l2 = self.map(z2)[:,domain].view(-1,self.style_dim)
+            l = self.map(z1)[output,domain]
+            l2 = self.map(z2)[output,domain]
         else:
             x1,x2 = x
-            l = self.style_enc(x1)[:,domain].view(-1,self.style_dim)
+            l = self.style_enc(x1)[output,domain]
             
-            l2 = self.style_enc(x2)[:,domain].view(-1,self.style_dim)
-
+            l2 = self.style_enc(x2)[output,domain]
         
-
+        
+        
         fake = self.generator(img,l)
 
-        real_cls = self.discriminator(img)[:,og_domain]
+        real_cls = self.discriminator(img)[output,og_domain]
         
-        fake_cls = self.discriminator(fake)[:,domain]
+        fake_cls = self.discriminator(fake)[output,domain]
 
-        style = self.style_enc(fake)[:,domain]
+        style = self.style_enc(fake)[output,domain]
 
-        real_style = self.style_enc(img)[:,og_domain]
+        real_style = self.style_enc(img)[output,og_domain]
         
         reconstruct = self.generator(fake,real_style)
         
@@ -290,18 +291,39 @@ class StarGan_v1_5():
         self.model = Model(self.latent_dim,self.style_dim,
                            self.img_size,self.num_domain,config['lr'],config['map_lr'],config['beta'],self.device)
 
+    def save(self,path):
+        torch.save(self.model.state_dict(), path+'model.pth')
+        torch.save(self.model.dsc_optim.state_dict(), path+'dsc_optim.pth')
+        torch.save(self.model.gen_optim.state_dict(), path+'gen_optim.pth')
+        torch.save(self.model.style_optim.state_dict(), path+'style_optim.pth')
+        torch.save(self.model.map_optim.state_dict(), path+'map_optiml.pth')
+
+    def load(self,path):
+
+        self.model.load_state_dict(torch.load(path+'model.pth'))
+        self.model.dsc_optim.load_state_dict(torch.load(path))
+        self.model.dsc_optim.load_state_dict( torch.load(path+'dsc_optim.pth'))
+        self.model.gen_optim.load_state_dict( torch.load(path+'gen_optim.pth'))
+        self.model.style_optim.load_state_dict( torch.load(path+'style_optim.pth'))
+        self.model.map_optim.load_state_dict( torch.load(path+'map_optiml.pth'))
+    
+    
+    
     def train(self, dataloader):
 
         torch.cuda.empty_cache()
         self.model.train()
-        epoch_logs = {"gen_loss": [],"dsc_loss": []}
+        epoch_logs = {"gen_loss": [],"disc_loss": []}
         
         for indx, data in enumerate(dataloader):
 
-            img,og_domain,x1,x2 = data["img"].to(self.device), data["domain"].to(self.device).long(),data["ref1"].to(self.device),data['ref2'].to(self.device)
+            img,og_domain,x1,x2,domain = data
+            img = img.to(self.device)
+            x1 = x1.to(self.device)
+            x2 = x2.to(self.device)
             z1 = torch.normal(torch.tensor([0.5]).repeat(self.batch,self.latent_dim),1)
             z2 = torch.normal(torch.tensor([0.5]).repeat(self.batch,self.latent_dim),1)
-            domain = torch.randint(0,self.num_domain,(self.batch,))
+            
             disc_loss, gen_loss = self.model(img,domain,og_domain,z = (z1,z2))
 
             self.model.dsc_optim.zero_grad()
@@ -330,7 +352,7 @@ class StarGan_v1_5():
             self.model.gen_optim.step()
             
             epoch_logs["gen_loss"].append((gen_loss+gen_loss2).mean().item())
-            epoch_logs["dsc_loss"].append((disc_loss+disc_loss2).mean().item())
+            epoch_logs["disc_loss"].append((disc_loss+disc_loss2).mean().item())
 
             
 
