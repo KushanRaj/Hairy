@@ -73,7 +73,7 @@ class Trainer:
                 self.model.save(f'/weights/{self.config["model"]}/{i}')
                 np.save(self.config['parameter'],[self.epochs])
                 if "val" in self.config["SPLIT"]:
-                    valid_log = self.model.valid(self.val_dataloader, self.writer)
+                    val_log = self.model.valid(self.val_dataloader, self.writer)
                     print(f"valid metrics: disc_loss - {val_log['disc_loss']}  gen_loss - {val_log['gen_loss']}")
                     self.writer.add_scalar("val/disc_loss",val_log["disc_loss"],i)
                     self.writer.add_scalar("val/gen_loss",val_log["gen_loss"],i)

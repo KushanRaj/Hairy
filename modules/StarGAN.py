@@ -262,7 +262,7 @@ class Model(nn.Module):
         diversity_loss = torch.abs(fake-fake2).mean().to(self.device)
 
         self.dsc_optim.zero_grad()
-        disc_loss.backward()
+        disc_loss.backward(retain_graph=True)
         
         grad = []
         for i in self.discriminator.parameters():
@@ -275,7 +275,7 @@ class Model(nn.Module):
 
         gen_loss = (gen_adv_loss + style_loss - diversity_loss + cycle_loss).to(self.device)
 
-        return disc_loss.item(), gen_loss.item()
+        return disc_loss, gen_loss
 
         
 class StarGan_v1_5():
@@ -327,14 +327,14 @@ class StarGan_v1_5():
             disc_loss, gen_loss = self.model(img,domain,og_domain,z = (z1,z2))
 
             self.model.dsc_optim.zero_grad()
-            disc_loss.backward()
+            disc_loss.backward(retain_graph=True)
             self.model.dsc_optim.step()
 
             
             self.model.map_optim.zero_grad()
             self.model.style_optim.zero_grad()
             self.model.gen_optim.zero_grad()
-            gen_loss.backward()
+            gen_loss.backward(retain_graph=True)
             
             
             self.model.map_optim.step()
@@ -344,11 +344,11 @@ class StarGan_v1_5():
             disc_loss2, gen_loss2 = self.model(img,domain,og_domain,x = (x1,x2))
 
             self.model.dsc_optim.zero_grad()
-            disc_loss2.backward()
+            disc_loss2.backward(retain_graph=True)
             self.model.dsc_optim.step()
 
             self.model.gen_optim.zero_grad()
-            gen_loss.backward()
+            gen_loss2.backward(retain_graph=True)
             self.model.gen_optim.step()
             
             epoch_logs["gen_loss"].append((gen_loss+gen_loss2).mean().item())
