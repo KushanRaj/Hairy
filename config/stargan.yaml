@@ -1,0 +1,19 @@
+dataset : "semantickitti"
+root : "D:/Python/celeba_hq"
+model : "StarGAN"
+transform : "spherical_proj"
+normalise : True
+img_size : 256
+batch_size : 8
+num_workers : 1
+lr : 0.0001
+map_lr : 0.000001
+beta : [0.0,0.99]
+epochs: 100_000
+latent_dim : 16
+style_dim : 64
+num_domains : 2
+classes : {0 : "female",
+           1 : "male"}
+num_workers : 1
+
