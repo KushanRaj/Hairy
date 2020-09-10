@@ -335,13 +335,6 @@ class StarGan_v1_5():
             gen_loss.backward()
             self.model.dsc_optim.step()
 
-            #self.model.dsc_optim.zero_grad()
-            #self.model.map_optim.zero_grad()
-            #self.model.style_optim.zero_grad()
-            #self.model.gen_optim.zero_grad()
-            
-            
-            
             self.model.map_optim.step()
             self.model.gen_optim.step()
             self.model.style_optim.step()

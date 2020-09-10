@@ -39,10 +39,11 @@ class CelebData(Dataset):
 
         if index>len(self.female):
             domain = 1
-            file2 = np.delete(self.data,index,0)[np.random.choice(self.data.shape[0]-1 - len(self.female),1)[0] + len(self.female)]
+            file2 = np.random.choice(np.delete(self.data,index,0)[len(self.female):],1)[0]
         else:
             domain = 0
-            file2= np.delete(self.data,index,0)[np.random.choice(len(self.female),1)[0]]
+            file2= np.random.choice(np.delete(self.data,index,0)[:len(self.female)-1],1)[0]
+
         ref1 = TF.to_tensor(TF.resize(Image.open(os.path.join(self.root,self.dict[domain],file1)),self.img_size))
         ref2 = TF.to_tensor(TF.resize(Image.open(os.path.join(self.root,self.dict[domain],file2)),self.img_size))
 
@@ -53,10 +54,10 @@ class CelebData(Dataset):
         img,og_domain,ref1,ref2,domain = self.load_image(idx)
         
         data = (img,
-               torch.tensor(float(domain)).long(),
+               torch.tensor(og_domain).long(),
                ref1,
                ref2,
-               domain)
+               torch.tensor(domain).long())
             
         
         return data
