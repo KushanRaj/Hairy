@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import numpy as np
 import torch.optim as optim
 from torch.autograd import Variable
-
+from tqdm import tqdm
 
 
 
@@ -106,23 +106,22 @@ class MappingNetwork(nn.Module):
         super(MappingNetwork,self).__init__()
         
 
-        self.shared = nn.ModuleList([nn.Sequential(nn.Linear(i, 512), Mish()) for i in [latent_dim]+[512]*3 ])    
+        self.shared = nn.ModuleList([nn.Sequential(nn.Linear(i, 128), Mish()) for i in [latent_dim]+[128]*3 ])    
 
-        self.unshared = nn.ModuleList([nn.Sequential(nn.Linear(512, 512),
+        self.unshared = nn.ModuleList([nn.Sequential(nn.Linear(128, 128),
                                             Mish(),
-                                            nn.Linear(512, 512),
+                                            nn.Linear(128, 128),
                                             Mish(),
-                                            nn.Linear(512, 512),
+                                            nn.Linear(128, 128),
                                             Mish(),
-                                            nn.Linear(512, style_dim)) for i in range(num_domains)])
+                                            nn.Linear(128, style_dim)) for i in range(num_domains)])
     def forward(self,z):
             
             for q in self.shared:
                 z = q(z)
-            output = []
-            for i in self.unshared:
-                output.append(i(z))
-            output = torch.stack(output,1) 
+            
+            
+            output = torch.stack([i(z) for i in self.unshared],1).cuda() 
             
             return output
 
@@ -131,11 +130,11 @@ class Generator(nn.Module):
     def __init__(self, img_size = 256, latent_dim = 16,style_dim=64,num_domains=2):
         super(Generator, self).__init__()
 
-        self.downsample = loop_conv(3,[3,64,128,256],[7,4,4],[3,1,1],[1,2,2],'mish')
+        self.downsample = loop_conv(2,[3,64,128],[7,4],[3,1],[1,4],'mish')
 
-        self.res = nn.ModuleList([ResBlock(style_dim,i) for i in [256]*6])
+        self.res = nn.ModuleList([ResBlock(style_dim,i) for i in [128]*4])
 
-        self.upsample = loop_deconv(2,[256,128,64],'mish',style_dim)
+        self.upsample = loop_deconv(2,[128,128,64],'mish',style_dim)
 
         self.conv = nn.Conv2d(64,3, 7,padding=3,stride=1)
 
@@ -160,9 +159,9 @@ class StyleEncoder(nn.Module):
         
         p = int(np.log2(img_size)) - 2
 
-        self.shared = loop_conv(p+1,[3,64,128,256]+[512]*(p-2),[3]*p+[4],[1]*p+[0],[2]*p+[1],'leaky')
+        self.shared = loop_conv(p+1,[3,64,64,128]+[128]*(p-2),[3]*p+[4],[1]*p+[0],[2]*p+[1],'leaky')
 
-        self.unshared = nn.ModuleList([nn.Linear(512, style_dim) for i in range(num_domains)])
+        self.unshared = nn.ModuleList([nn.Linear(128, style_dim) for i in range(num_domains)])
         
     def forward(self, x):
 
@@ -182,9 +181,9 @@ class Discriminator(nn.Module):
         
         p = int(np.log2(img_size)) - 2
 
-        self.shared = loop_conv(p+1,[3,64,128,256]+[512]*(p-2),[3]*p+[4],[1]*p+[0],[2]*p+[1],'mish')
+        self.shared = loop_conv(p+1,[3,64,64,128]+[128]*(p-2),[3]*p+[4],[1]*p+[0],[2]*p+[1],'leaky')
 
-        self.unshared = nn.ModuleList([nn.Linear(512,1) for i in range(num_domains)])
+        self.unshared = nn.ModuleList([nn.Linear(128,1) for i in range(num_domains)])
 
     def forward(self, x):
         x = self.shared(x)
@@ -262,6 +261,9 @@ class Model(nn.Module):
         diversity_loss = torch.abs(fake-fake2).mean().to(self.device)
 
         self.dsc_optim.zero_grad()
+        self.map_optim.zero_grad()
+        self.style_optim.zero_grad()
+        self.gen_optim.zero_grad()
         disc_loss.backward(retain_graph=True)
         
         grad = []
@@ -310,45 +312,51 @@ class StarGan_v1_5():
     
     
     def train(self, dataloader):
-
         torch.cuda.empty_cache()
         self.model.train()
         epoch_logs = {"gen_loss": [],"disc_loss": []}
         
-        for indx, data in enumerate(dataloader):
-
+        for indx, data in tqdm(enumerate(dataloader)):
+            
             img,og_domain,x1,x2,domain = data
             img = img.to(self.device)
             x1 = x1.to(self.device)
             x2 = x2.to(self.device)
-            z1 = torch.normal(torch.tensor([0.5]).repeat(self.batch,self.latent_dim),1)
-            z2 = torch.normal(torch.tensor([0.5]).repeat(self.batch,self.latent_dim),1)
+            z1 = torch.normal(torch.tensor([0.5]).repeat(self.batch,self.latent_dim),1).to(self.device)
+            z2 = torch.normal(torch.tensor([0.5]).repeat(self.batch,self.latent_dim),1).to(self.device)
             
             disc_loss, gen_loss = self.model(img,domain,og_domain,z = (z1,z2))
 
             self.model.dsc_optim.zero_grad()
-            disc_loss.backward(retain_graph=True)
-            self.model.dsc_optim.step()
-
-            
             self.model.map_optim.zero_grad()
             self.model.style_optim.zero_grad()
             self.model.gen_optim.zero_grad()
-            gen_loss.backward(retain_graph=True)
+            disc_loss.backward(retain_graph=True)
+            gen_loss.backward()
+            self.model.dsc_optim.step()
+
+            #self.model.dsc_optim.zero_grad()
+            #self.model.map_optim.zero_grad()
+            #self.model.style_optim.zero_grad()
+            #self.model.gen_optim.zero_grad()
+            
             
             
             self.model.map_optim.step()
             self.model.gen_optim.step()
             self.model.style_optim.step()
+            
 
             disc_loss2, gen_loss2 = self.model(img,domain,og_domain,x = (x1,x2))
 
             self.model.dsc_optim.zero_grad()
-            disc_loss2.backward(retain_graph=True)
-            self.model.dsc_optim.step()
-
             self.model.gen_optim.zero_grad()
-            gen_loss2.backward(retain_graph=True)
+            disc_loss2.backward(retain_graph=True)
+            gen_loss2.backward()
+            self.model.dsc_optim.step()
+            
+            
+            
             self.model.gen_optim.step()
             
             epoch_logs["gen_loss"].append((gen_loss+gen_loss2).mean().item())

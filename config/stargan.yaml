@@ -1,7 +1,7 @@
 dataset : "Celeb"
-root : "D:/Python/celeba_hq"
+root : "E:/celeba_hq"
 model : "StarGAN"
-img_size : 64
+img_size : 128
 batch_size : 8
 num_workers : 1
 lr : 0.0001
@@ -15,6 +15,6 @@ classes : {0 : "female",
            1 : "male"}
 num_workers : 1
 SPLIT : ['val','train']
-parameter : "D:/Python/HairstyleGAN/epochs"
+parameter : "E:/HairstyleGAN/epochs"
 valid_every : 5
 
