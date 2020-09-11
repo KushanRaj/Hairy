@@ -355,6 +355,9 @@ class StarGan_v1_5():
             epoch_logs["gen_loss"].append((gen_loss+gen_loss2).mean().item())
             epoch_logs["disc_loss"].append((disc_loss+disc_loss2).mean().item())
 
+        epoch_logs["gen_loss"] = torch.tensor(epoch_logs["gen_loss"]).mean()
+        epoch_logs["disc_loss"] = torch.tensor(epoch_logs["disc_loss"]).mean()
+
             
 
 

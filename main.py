@@ -70,7 +70,7 @@ class Trainer:
 
             if i % self.config["valid_every"]:
                 
-                self.model.save(f'/weights/{self.config["model"]}/{i}')
+                self.model.save(f'E:/Hairy/weights/StarGAN/{self.config["model"]}/{i}')
                 np.save(self.config['parameter'],[self.epochs])
                 if "val" in self.config["SPLIT"]:
                     val_log = self.model.valid(self.val_dataloader, self.writer)
@@ -80,7 +80,7 @@ class Trainer:
             if i % 10:
                 style = self.model.model.style_enc(self.img2.to(self.device))
                 gen_img = self.model.model.generator(self.img1.to(self.device),style)[0]     
-                self.writer.add_image(f"generated_image@{i}",gen_img,i)
+                self.writer.add_image("generated_image",gen_img,i)
         
     
     def close_writer(self):
@@ -96,4 +96,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     trainer = Trainer(args)
+    trainer._run()
     
