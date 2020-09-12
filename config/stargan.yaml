@@ -15,6 +15,8 @@ classes : {0 : "female",
            1 : "male"}
 num_workers : 1
 SPLIT : ['val','train']
-parameter : "E:/HairstyleGAN/epochs"
+parameter : "E:/Hairy/epochs/epoch"
 valid_every : 5
+show_every : 10
+weight_save : 'E:/Hairy/weights'
 

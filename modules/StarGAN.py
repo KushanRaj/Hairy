@@ -29,7 +29,7 @@ class loop_conv(nn.Module):
             model += nn.Sequential(
                                     nn.Conv2d(filters[i],filters[i+1], kernel_size=k[i],padding=p[i],stride=s[i]),
                                     activations[activation],
-                                    nn.InstanceNorm2d(filters[i+1], affine=True, track_running_stats=True)
+                                    nn.InstanceNorm2d(filters[i+1], affine=True)
                                     )
         self.module = nn.ModuleList(model)
         
@@ -268,7 +268,7 @@ class Model(nn.Module):
         
         grad = []
         for i in self.discriminator.parameters():
-            grad += [torch.sum(i.pow(2))] 
+            grad += [torch.sum(i.grad.pow(2))] 
         
         
         penalty = 0.5 * torch.tensor(grad).mean(0)
@@ -362,6 +362,35 @@ class StarGan_v1_5():
 
 
         
+        return epoch_logs
+    
+    def valid(self, dataloader):
+        torch.cuda.empty_cache()
+        self.model.eval()
+
+
+        epoch_logs = {"gen_loss": [],"disc_loss": []}
+        
+        for indx, data in tqdm(enumerate(dataloader)):
+            
+            img,og_domain,x1,x2,domain = data
+            img = img.to(self.device)
+            x1 = x1.to(self.device)
+            x2 = x2.to(self.device)
+            z1 = torch.normal(torch.tensor([0.5]).repeat(self.batch,self.latent_dim),1).to(self.device)
+            z2 = torch.normal(torch.tensor([0.5]).repeat(self.batch,self.latent_dim),1).to(self.device)
+            
+            disc_loss, gen_loss = self.model(img,domain,og_domain,z = (z1,z2))
+
+            disc_loss2, gen_loss2 = self.model(img,domain,og_domain,x = (x1,x2))
+
+            epoch_logs["gen_loss"].append((gen_loss+gen_loss2).mean().item())
+            epoch_logs["disc_loss"].append((disc_loss+disc_loss2).mean().item())
+
+        epoch_logs["gen_loss"] = torch.tensor(epoch_logs["gen_loss"]).mean()
+        epoch_logs["disc_loss"] = torch.tensor(epoch_logs["disc_loss"]).mean()
+
+
         return epoch_logs
 
 
