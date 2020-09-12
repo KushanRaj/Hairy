@@ -26,17 +26,30 @@ class loop_conv(nn.Module):
                        'leaky':nn.LeakyReLU()}
         for i in range(l):
             
-            model += [nn.Sequential(
-                                    nn.Conv2d(filters[i],filters[i+1], kernel_size=k[i],padding=p[i],stride=s[i]),
-                                    activations[activation],
-                                    nn.InstanceNorm2d(filters[i+1], affine=True)
-                                    )]
+            model += [
+                      nn.Conv2d(filters[i],filters[i], kernel_size=k[i],padding=p[i],stride=s[i],groups = filters[i]),
+                      nn.Conv3d(1,filters[i+1], kernel_size=(filters[i],1,1)),
+                      nn.Sequential(activations[activation],
+                      nn.InstanceNorm2d(filters[i+1], affine=True)
+                      )]
         self.module = nn.ModuleList(model)
         
     def forward(self,x,l=None):
         
-        for i in self.module:
-            x = i(x)
+        for i,layer in enumerate(self.module):
+            
+            x = layer(x)
+
+            if i%3==0:
+                
+                
+                
+                x = x.view(x.size(0),1,x.size(1),x.size(2),x.size(3))
+            if i %3 == 1:
+                
+                
+                
+                x = x.view(x.size(0),x.size(1),x.size(3),x.size(4))
             
         return x
 
@@ -49,18 +62,33 @@ class loop_deconv(nn.Module):
                        'leaky':nn.LeakyReLU()}
         norm = []
         for i in range(l):
-            model.append(nn.Sequential(
-                                    nn.ConvTranspose2d(filters[i],filters[i+1], kernel_size=4,padding=1,stride=2),
-                                    activations[activation]))
+            model += [
+                      nn.ConvTranspose2d(filters[i],filters[i], kernel_size=4,padding=1,stride=2,groups = filters[i]),
+                      nn.Conv3d(1,filters[i+1], kernel_size=(filters[i],1,1)),
+                      activations[activation]
+                      ]
+            
             norm.append(AdaIN(latent_dim,filters[i+1]))
                                     
         self.model = nn.ModuleList(model)
         self.norm = nn.ModuleList(norm)
     def forward(self,x,l):
-        
-        for i,y in zip(self.model,self.norm):
-            x = i(x)
-            x = y(x,l)
+        q = 0
+        for i,layer in enumerate(self.model):
+            x = layer(x)
+            
+
+            if i%3==0:
+                
+                x = x.view(x.size(0),1,x.size(1),x.size(2),x.size(3))
+            elif i %3 == 1:
+                
+                x = x.view(x.size(0),x.size(1),x.size(3),x.size(4))
+            else:
+                
+                x = self.norm[q](x,l)
+                q += 1
+            
             
         return x
 
@@ -72,6 +100,7 @@ class AdaIN(nn.Module):
 
     def forward(self, x, s):
         h = self.fc(s)
+        
         h = h.view(h.size(0), h.size(1), 1, 1)
         gamma, beta = torch.chunk(h, chunks=2, dim=1)
         
@@ -81,22 +110,30 @@ class ResBlock(nn.Module):
     def __init__(self, latent_dim,filters):
         super(ResBlock, self).__init__()
         
-        
+        self.conv_1 = nn.Conv2d(filters,filters, kernel_size=3,padding=1,stride=1,groups = filters)
+        self.conv_2 = nn.Conv3d(1,filters, kernel_size=(filters,1,1))
 
-        self.conv_1 = nn.Sequential(
-                                    nn.Conv2d(filters,filters, kernel_size=3,padding=1, stride=1),
-                                    Mish())
-        self.norm =                 AdaIN(latent_dim,filters)
-        self.conv_2 =               nn.Conv2d(filters,filters, kernel_size=3, padding=1,stride=1)
-        self.norm2 =                AdaIN(latent_dim,filters)
+        self.activation = Mish()
+        self.norm = AdaIN(latent_dim,filters)
+        self.conv_3 = nn.Conv2d(filters,filters, kernel_size=3,padding=1,stride=1,groups = filters)
+        self.conv_4 = nn.Conv3d(1,filters, kernel_size=(filters,1,1))
+        self.norm2 = AdaIN(latent_dim,filters)
+        
         
     
     def forward(self, x,l):
         
         y = self.conv_1(x)
-        
-        y = self.norm(y,l)
+
+        y = y.view(y.size(0),1,y.size(1),y.size(2),y.size(3))
         y = self.conv_2(y)
+        y = y.view(y.size(0),y.size(1),y.size(3),y.size(4))
+        y = self.norm(y,l)
+        y = self.conv_3(x)
+
+        y = y.view(y.size(0),1,y.size(1),y.size(2),y.size(3))
+        y = self.conv_4(y)
+        y = y.view(y.size(0),y.size(1),y.size(3),y.size(4))
         y = self.norm2(y,l)
         
         return x + y
@@ -106,15 +143,15 @@ class MappingNetwork(nn.Module):
         super(MappingNetwork,self).__init__()
         
 
-        self.shared = nn.ModuleList([nn.Sequential(nn.Linear(i, 128), Mish()) for i in [latent_dim]+[128]*3 ])    
+        self.shared = nn.ModuleList([nn.Sequential(nn.Linear(i, 512), Mish()) for i in [latent_dim]+[512]*3 ])    
 
-        self.unshared = nn.ModuleList([nn.Sequential(nn.Linear(128, 128),
+        self.unshared = nn.ModuleList([nn.Sequential(nn.Linear(512, 512),
                                             Mish(),
-                                            nn.Linear(128, 128),
+                                            nn.Linear(512, 512),
                                             Mish(),
-                                            nn.Linear(128, 128),
+                                            nn.Linear(512, 512),
                                             Mish(),
-                                            nn.Linear(128, style_dim)) for i in range(num_domains)])
+                                            nn.Linear(512, style_dim)) for i in range(num_domains)])
     def forward(self,z):
             
             for q in self.shared:
@@ -130,15 +167,15 @@ class Generator(nn.Module):
     def __init__(self, img_size = 256, latent_dim = 16,style_dim=64,num_domains=2):
         super(Generator, self).__init__()
 
-        self.downsample = loop_conv(2,[3,64,128],[7,4],[3,1],[1,4],'mish')
+        self.downsample = loop_conv(4,[3,64,128,256,512],[7,4,4,4],[3,1,1,1],[1,2,2,2],'mish')
 
-        self.res = nn.ModuleList([ResBlock(style_dim,i) for i in [128]*4])
+        self.res = nn.ModuleList([ResBlock(style_dim,i) for i in [512]*6])
 
-        self.upsample = loop_deconv(2,[128,128,64],'mish',style_dim)
+        self.upsample = loop_deconv(3,[512,256,128,64],'mish',style_dim)
 
         self.conv = nn.Conv2d(64,3, 7,padding=3,stride=1)
 
-        self.map = MappingNetwork(latent_dim,style_dim,num_domains)
+        
 
     def forward(self,x,l):
         
@@ -157,11 +194,11 @@ class StyleEncoder(nn.Module):
         super(StyleEncoder, self).__init__()
 
         
-        p = int(np.log2(img_size)) - 2
+        p = int(np.log2(img_size)) 
 
-        self.shared = loop_conv(p+1,[3,64,64,128]+[128]*(p-2),[3]*p+[4],[1]*p+[0],[2]*p+[1],'leaky')
+        self.shared = loop_conv(p,[3]+[2**n for n in range(6,6+p)],[4]*p,[1]*p,[2]*p,'leaky')
 
-        self.unshared = nn.ModuleList([nn.Linear(128, style_dim) for i in range(num_domains)])
+        self.unshared = nn.ModuleList([nn.Linear(2**(5+p), style_dim) for i in range(num_domains)])
         
     def forward(self, x):
 
@@ -179,11 +216,11 @@ class Discriminator(nn.Module):
         super(Discriminator, self).__init__()
 
         
-        p = int(np.log2(img_size)) - 2
+        p = int(np.log2(img_size)) 
 
-        self.shared = loop_conv(p+1,[3,64,64,128]+[128]*(p-2),[3]*p+[4],[1]*p+[0],[2]*p+[1],'leaky')
+        self.shared = loop_conv(p,[3]+[2**n for n in range(6,6+p)],[4]*p,[1]*p,[2]*p,'leaky')
 
-        self.unshared = nn.ModuleList([nn.Linear(128,1) for i in range(num_domains)])
+        self.unshared = nn.ModuleList([nn.Linear(2**(5+p),1) for i in range(num_domains)])
 
     def forward(self, x):
         x = self.shared(x)
@@ -328,13 +365,12 @@ class StarGan_v1_5():
             disc_loss, gen_loss = self.model(img,domain,og_domain,z = (z1,z2))
 
             self.model.dsc_optim.zero_grad()
+            disc_loss.backward(retain_graph=True)
             self.model.map_optim.zero_grad()
             self.model.style_optim.zero_grad()
             self.model.gen_optim.zero_grad()
-            disc_loss.backward(retain_graph=True)
             gen_loss.backward()
             self.model.dsc_optim.step()
-
             self.model.map_optim.step()
             self.model.gen_optim.step()
             self.model.style_optim.step()
@@ -343,8 +379,8 @@ class StarGan_v1_5():
             disc_loss2, gen_loss2 = self.model(img,domain,og_domain,x = (x1,x2))
 
             self.model.dsc_optim.zero_grad()
-            self.model.gen_optim.zero_grad()
             disc_loss2.backward(retain_graph=True)
+            self.model.gen_optim.zero_grad()
             gen_loss2.backward()
             self.model.dsc_optim.step()
             

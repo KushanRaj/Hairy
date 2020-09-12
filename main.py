@@ -1,7 +1,7 @@
 from datasets import Celeb
 from utils import common
 from torch.utils.data import DataLoader
-from modules import StarGAN
+from modules import StarGAN_DSC
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -13,7 +13,7 @@ dataset_helper = {
 }
 
 model_helper = {
-    "StarGAN" : StarGAN.StarGan_v1_5
+    "StarGAN" : StarGAN_DSC.StarGan_v1_5
 }
 
 
