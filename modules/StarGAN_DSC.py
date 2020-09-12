@@ -11,11 +11,35 @@ from tqdm import tqdm
 
 class Mish(nn.Module):
     def __init__(self):
-        super().__init__()
+        super(Mish,self).__init__()
 
     def forward(self, x):
         x = x * (torch.tanh(F.softplus(x)))
         return x
+
+class DSCConv2d(nn.Module):
+
+    def __init__(self,filters,out_filters,kernel_size=3,padding=0,stride=1):
+        super(DSCConv2d,self).__init__()
+
+        self.conv1 = nn.Conv2d(filters,filters, kernel_size=kernel_size,padding=padding,stride=stride,groups = filters)
+        self.pointwise = nn.Conv2d(filters,out_filters,1)
+
+    def forward(self,x):
+
+        return self.pointwise(self.conv1(x))
+
+class DSCConvTranspose2d(nn.Module):
+
+    def __init__(self,filters,out_filters,kernel_size=3,padding=0,stride=1):
+        super(DSCConvTranspose2d,self).__init__()
+
+        self.conv1 = nn.ConvTranspose2d(filters,filters, kernel_size=kernel_size,padding=padding,stride=stride,groups = filters)
+        self.pointwise = nn.Conv2d(filters,out_filters,1)
+
+    def forward(self,x):
+
+        return self.pointwise(self.conv1(x))
 
 class loop_conv(nn.Module):
 
@@ -26,30 +50,17 @@ class loop_conv(nn.Module):
                        'leaky':nn.LeakyReLU()}
         for i in range(l):
             
-            model += [
-                      nn.Conv2d(filters[i],filters[i], kernel_size=k[i],padding=p[i],stride=s[i],groups = filters[i]),
-                      nn.Conv3d(1,filters[i+1], kernel_size=(filters[i],1,1)),
-                      nn.Sequential(activations[activation],
-                      nn.InstanceNorm2d(filters[i+1], affine=True)
-                      )]
+            model += [nn.Sequential(
+                                    DSCConv2d(filters[i],filters[i+1], kernel_size=k[i],padding=p[i],stride=s[i]),
+                                    activations[activation],
+                                    nn.InstanceNorm2d(filters[i+1], affine=True)
+                                    )]
         self.module = nn.ModuleList(model)
         
     def forward(self,x,l=None):
         
-        for i,layer in enumerate(self.module):
-            
-            x = layer(x)
-
-            if i%3==0:
-                
-                
-                
-                x = x.view(x.size(0),1,x.size(1),x.size(2),x.size(3))
-            if i %3 == 1:
-                
-                
-                
-                x = x.view(x.size(0),x.size(1),x.size(3),x.size(4))
+        for i in self.module:
+            x = i(x)
             
         return x
 
@@ -62,33 +73,18 @@ class loop_deconv(nn.Module):
                        'leaky':nn.LeakyReLU()}
         norm = []
         for i in range(l):
-            model += [
-                      nn.ConvTranspose2d(filters[i],filters[i], kernel_size=4,padding=1,stride=2,groups = filters[i]),
-                      nn.Conv3d(1,filters[i+1], kernel_size=(filters[i],1,1)),
-                      activations[activation]
-                      ]
-            
+            model.append(nn.Sequential(
+                                    DSCConvTranspose2d(filters[i],filters[i+1], kernel_size=4,padding=1,stride=2),
+                                    activations[activation]))
             norm.append(AdaIN(latent_dim,filters[i+1]))
                                     
         self.model = nn.ModuleList(model)
         self.norm = nn.ModuleList(norm)
     def forward(self,x,l):
-        q = 0
-        for i,layer in enumerate(self.model):
-            x = layer(x)
-            
-
-            if i%3==0:
-                
-                x = x.view(x.size(0),1,x.size(1),x.size(2),x.size(3))
-            elif i %3 == 1:
-                
-                x = x.view(x.size(0),x.size(1),x.size(3),x.size(4))
-            else:
-                
-                x = self.norm[q](x,l)
-                q += 1
-            
+        
+        for i,y in zip(self.model,self.norm):
+            x = i(x)
+            x = y(x,l)
             
         return x
 
@@ -100,7 +96,6 @@ class AdaIN(nn.Module):
 
     def forward(self, x, s):
         h = self.fc(s)
-        
         h = h.view(h.size(0), h.size(1), 1, 1)
         gamma, beta = torch.chunk(h, chunks=2, dim=1)
         
@@ -110,30 +105,22 @@ class ResBlock(nn.Module):
     def __init__(self, latent_dim,filters):
         super(ResBlock, self).__init__()
         
-        self.conv_1 = nn.Conv2d(filters,filters, kernel_size=3,padding=1,stride=1,groups = filters)
-        self.conv_2 = nn.Conv3d(1,filters, kernel_size=(filters,1,1))
-
-        self.activation = Mish()
-        self.norm = AdaIN(latent_dim,filters)
-        self.conv_3 = nn.Conv2d(filters,filters, kernel_size=3,padding=1,stride=1,groups = filters)
-        self.conv_4 = nn.Conv3d(1,filters, kernel_size=(filters,1,1))
-        self.norm2 = AdaIN(latent_dim,filters)
         
+
+        self.conv_1 = nn.Sequential(
+                                    DSCConv2d(filters,filters, kernel_size=3,padding=1, stride=1),
+                                    Mish())
+        self.norm =                 AdaIN(latent_dim,filters)
+        self.conv_2 =               DSCConv2d(filters,filters, kernel_size=3, padding=1,stride=1)
+        self.norm2 =                AdaIN(latent_dim,filters)
         
     
     def forward(self, x,l):
         
         y = self.conv_1(x)
-
-        y = y.view(y.size(0),1,y.size(1),y.size(2),y.size(3))
-        y = self.conv_2(y)
-        y = y.view(y.size(0),y.size(1),y.size(3),y.size(4))
+        
         y = self.norm(y,l)
-        y = self.conv_3(x)
-
-        y = y.view(y.size(0),1,y.size(1),y.size(2),y.size(3))
-        y = self.conv_4(y)
-        y = y.view(y.size(0),y.size(1),y.size(3),y.size(4))
+        y = self.conv_2(y)
         y = self.norm2(y,l)
         
         return x + y
@@ -173,7 +160,7 @@ class Generator(nn.Module):
 
         self.upsample = loop_deconv(3,[512,256,128,64],'mish',style_dim)
 
-        self.conv = nn.Conv2d(64,3, 7,padding=3,stride=1)
+        self.conv = DSCConv2d(64,3, 7,padding=3,stride=1)
 
         
 
