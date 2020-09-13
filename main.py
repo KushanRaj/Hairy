@@ -54,37 +54,37 @@ class Trainer:
                     drop_last=False, 
                     num_workers=self.config["num_workers"]
                 )
-    def re__init(self,epoch_path):
+    def re__init(self,epoch_path,div_loss_path):
         self.epochs = np.load(epoch_path,allow_pickle=True)[0]
+        self.model.model.diversity_wt = np.load(div_loss_path,allow_pickle=True)[0]
         self.model.load(f'{self.config["weight_save"]}/{self.config["model"]}/{i}')
 
     def _run(self):
         print ("start training")
         epoch = self.epochs
-        
+        sampler = iter(self.train_dataloader)
         for i in tqdm(range(epoch,self.config["epochs"])):
             train_log = self.model.train(self.train_dataloader)
             
-            ' '.join([f'{i} - {y}' for i,y in train_log.items()])
-
-            print(f"train metrics: "+ ' '.join([f'{i} - {y}' for i,y in train_log.items()]))
-            for i,y in train_log.items():
-                self.writer.add_scalar(f"train/{i}",y,i)
+            
+            
+            print(f"train metrics: "+ ' '.join([f'{x} - {y}' for x,y in train_log.items()]))
+            for x,y in train_log.items():
+                self.writer.add_scalar(f"train/{x}",y,i)
             
 
             
             if "val" in self.config["SPLIT"]:
                 val_log = self.model.valid(self.val_dataloader)
-                ' '.join([f'{i} - {y}' for i,y in train_log.items()])
+                
 
-                print(f"val metrics: "+ ' '.join([f'{i} - {y}' for i,y in val_log.items()]))
-                for i,y in val_log.items():
-                    self.writer.add_scalar(f"val/{i}",y,i)
+                print(f"val metrics: "+ ' '.join([f'{x} - {y}' for x,y in val_log.items()]))
+                for x,y in val_log.items():
+                    self.writer.add_scalar(f"val/{x}",y,i)
                 
             if i % self.config["show_every"] == 0:
-                s1,s2 = RandomSampler(self.train_dataloader,num_samples=2)
-                source,_,_,_,_ = s1
-                ref, ref_domain,_,_,_ = s2
+                source,_,_,_,_ = next(sampler)
+                ref, ref_domain,_,_,_ = next(sampler)
                 grid = torchvision.utils.make_grid(source)
                 ref_grid = torchvision.utils.make_grid(ref)
                 self.writer.add_image("source",grid,i)
@@ -96,16 +96,19 @@ class Trainer:
                 grid = torchvision.utils.make_grid(gen_img)   
                 self.writer.add_image("generated_image",grid,i)
 
-            if i % self.config["valid_every"] == 0:
+            self.model.model.diversity_wt = max(0,self.model.model.diversity_wt*(1-i/self.config["epochs"]))
+
+            if i % self.config["save_every"] == 0:
                 
                 self.model.save(f'{self.config["weight_save"]}/{self.config["model"]}/{i}')
                 np.save(self.config['parameter'],[self.epochs])
+                np.save(self.config['parameter2'],[self.model.model.diversity_wt])
+            
         
     
     def close_writer(self):
         self.writer.close()
-    def load_model(self,path):
-        self.model.load_model(path)
+    
 
 
 if __name__ == "__main__":

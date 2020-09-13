@@ -16,7 +16,11 @@ classes : {0 : "female",
 num_workers : 1
 SPLIT : ['val','train']
 parameter : "E:/Hairy/epochs/epoch"
-valid_every : 5
+parameter2 : "E:/Hairy/div_wt/div"
+save_every : 5
 show_every : 10
 weight_save : 'E:/Hairy/weights'
+style_wt : 1
+cycle_wt : 1
+diversity_wt : 1
 
