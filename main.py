@@ -1,6 +1,6 @@
 from datasets import Celeb
 from utils import common
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader,RandomSampler
 from modules import StarGAN_DSC
 import torch
 from torch.utils.tensorboard import SummaryWriter
@@ -44,10 +44,6 @@ class Trainer:
             )
 
             
-            self.source,_,_,_,_ = next(iter(self.train_dataloader))
-            self.ref, self.ref_domain,_,_,_ = next(iter(self.train_dataloader))
-            self.grid = torchvision.utils.make_grid(self.source)
-            self.ref_grid = torchvision.utils.make_grid(self.ref)
             
         if "val" in self.config["SPLIT"]:
             val_dataset = dataset_helper[self.config["dataset"]](self.config, "val")
@@ -64,33 +60,46 @@ class Trainer:
 
     def _run(self):
         print ("start training")
-        self.writer.add_image("source",self.grid,0)
-        self.writer.add_image("ref",self.ref_grid,0)
         epoch = self.epochs
         
         for i in tqdm(range(epoch,self.config["epochs"])):
             train_log = self.model.train(self.train_dataloader)
-            print(f"train metrics: disc_loss - {train_log['disc_loss']}  gen_loss - {train_log['gen_loss']}")
+            
+            ' '.join([f'{i} - {y}' for i,y in train_log.items()])
 
-            self.writer.add_scalar("train/disc_loss",train_log["disc_loss"],i)
-            self.writer.add_scalar("train/gen_loss",train_log["gen_loss"],i)
+            print(f"train metrics: "+ ' '.join([f'{i} - {y}' for i,y in train_log.items()]))
+            for i,y in train_log.items():
+                self.writer.add_scalar(f"train/{i}",y,i)
+            
+
+            
+            if "val" in self.config["SPLIT"]:
+                val_log = self.model.valid(self.val_dataloader)
+                ' '.join([f'{i} - {y}' for i,y in train_log.items()])
+
+                print(f"val metrics: "+ ' '.join([f'{i} - {y}' for i,y in val_log.items()]))
+                for i,y in val_log.items():
+                    self.writer.add_scalar(f"val/{i}",y,i)
+                
+            if i % self.config["show_every"] == 0:
+                s1,s2 = RandomSampler(self.train_dataloader,num_samples=2)
+                source,_,_,_,_ = s1
+                ref, ref_domain,_,_,_ = s2
+                grid = torchvision.utils.make_grid(source)
+                ref_grid = torchvision.utils.make_grid(ref)
+                self.writer.add_image("source",grid,i)
+                self.writer.add_image("ref",ref_grid,i)
+                torch.cuda.empty_cache()
+                self.model.model.eval()
+                style = self.model.model.style_enc(ref.to(self.device))[torch.arange(0,self.config["batch_size"]),ref_domain]
+                gen_img = self.model.model.generator(source.to(self.device),style) 
+                grid = torchvision.utils.make_grid(gen_img)   
+                self.writer.add_image("generated_image",grid,i)
 
             if i % self.config["valid_every"] == 0:
                 
                 self.model.save(f'{self.config["weight_save"]}/{self.config["model"]}/{i}')
                 np.save(self.config['parameter'],[self.epochs])
-                if "val" in self.config["SPLIT"]:
-                    val_log = self.model.valid(self.val_dataloader)
-                    print(f"valid metrics: disc_loss - {val_log['disc_loss']}  gen_loss - {val_log['gen_loss']}")
-                    self.writer.add_scalar("val/disc_loss",val_log["disc_loss"],i)
-                    self.writer.add_scalar("val/gen_loss",val_log["gen_loss"],i)
-            if i % self.config["show_every"] == 0:
-                torch.cuda.empty_cache()
-                self.model.model.eval()
-                style = self.model.model.style_enc(self.ref.to(self.device))[torch.arange(0,self.config["batch_size"]),self.ref_domain]
-                gen_img = self.model.model.generator(self.source.to(self.device),style) 
-                grid = torchvision.utils.make_grid(gen_img)   
-                self.writer.add_image("generated_image",grid,i)
         
     
     def close_writer(self):

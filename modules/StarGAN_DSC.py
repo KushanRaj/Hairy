@@ -301,7 +301,7 @@ class Model(nn.Module):
 
         gen_loss = (gen_adv_loss + style_loss - diversity_loss + cycle_loss).to(self.device)
 
-        return disc_loss, gen_loss
+        return disc_loss, gen_loss,style_loss,diversity_loss,cycle_loss
 
         
 class StarGan_v1_5():
@@ -338,7 +338,19 @@ class StarGan_v1_5():
     def train(self, dataloader):
         torch.cuda.empty_cache()
         self.model.train()
-        epoch_logs = {"gen_loss": [],"disc_loss": []}
+        epoch_logs = {
+                    "gen_latent_loss": [],
+                    "gen_ref_loss": [],
+                    "disc_latent_loss": [],
+                    "disc_ref_loss": [],
+                    "style_latent_loss": [],
+                    "style_ref_loss": [],
+                    "diversity_latent_loss": [],
+                    "diversity_ref_loss": [],
+                    "cycle_latent_loss": [],
+                    "cycle_ref_loss": []
+        
+        }
         
         for indx, data in tqdm(enumerate(dataloader)):
             
@@ -349,7 +361,7 @@ class StarGan_v1_5():
             z1 = torch.normal(torch.tensor([0.5]).repeat(self.batch,self.latent_dim),1).to(self.device)
             z2 = torch.normal(torch.tensor([0.5]).repeat(self.batch,self.latent_dim),1).to(self.device)
             
-            disc_loss, gen_loss = self.model(img,domain,og_domain,z = (z1,z2))
+            disc_loss, gen_loss,style_loss,diversity_loss,cycle_loss = self.model(img,domain,og_domain,z = (z1,z2))
 
             self.model.dsc_optim.zero_grad()
             disc_loss.backward(retain_graph=True)
@@ -358,12 +370,13 @@ class StarGan_v1_5():
             self.model.gen_optim.zero_grad()
             gen_loss.backward()
             self.model.dsc_optim.step()
-            self.model.map_optim.step()
             self.model.gen_optim.step()
+            self.model.map_optim.step()
+            
             self.model.style_optim.step()
             
 
-            disc_loss2, gen_loss2 = self.model(img,domain,og_domain,x = (x1,x2))
+            disc_loss2, gen_loss2,style_loss2,diversity_loss2,cycle_loss2 = self.model(img,domain,og_domain,x = (x1,x2))
 
             self.model.dsc_optim.zero_grad()
             disc_loss2.backward(retain_graph=True)
@@ -375,12 +388,20 @@ class StarGan_v1_5():
             
             self.model.gen_optim.step()
             
-            epoch_logs["gen_loss"].append((gen_loss+gen_loss2).mean().item())
-            epoch_logs["disc_loss"].append((disc_loss+disc_loss2).mean().item())
+            epoch_logs["gen_latent_loss"].append((gen_loss).mean().item())
+            epoch_logs["gen_ref_loss"].append((gen_loss2).mean().item())
+            epoch_logs["disc_latent_loss"].append((disc_loss).mean().item())
+            epoch_logs["disc_ref_loss"].append((disc_loss2).mean().item())
+            epoch_logs["style_latent_loss"].append((style_loss).mean().item())
+            epoch_logs["style_ref_loss"].append((style_loss2).mean().item())
+            epoch_logs["diversity_latent_loss"].append((diversity_loss).mean().item())
+            epoch_logs["diversity_ref_loss"].append((diversity_loss2).mean().item())
+            epoch_logs["cycle_latent_loss"].append((cycle_loss).mean().item())
+            epoch_logs["cycle_ref_loss"].append((cycle_loss2).mean().item())
 
-        epoch_logs["gen_loss"] = torch.tensor(epoch_logs["gen_loss"]).mean()
-        epoch_logs["disc_loss"] = torch.tensor(epoch_logs["disc_loss"]).mean()
+            
 
+        
             
 
 
@@ -403,15 +424,22 @@ class StarGan_v1_5():
             z1 = torch.normal(torch.tensor([0.5]).repeat(self.batch,self.latent_dim),1).to(self.device)
             z2 = torch.normal(torch.tensor([0.5]).repeat(self.batch,self.latent_dim),1).to(self.device)
             
-            disc_loss, gen_loss = self.model(img,domain,og_domain,z = (z1,z2))
+            isc_loss, gen_loss,style_loss,diversity_loss,cycle_loss = self.model(img,domain,og_domain,z = (z1,z2))
 
-            disc_loss2, gen_loss2 = self.model(img,domain,og_domain,x = (x1,x2))
+            disc_loss2, gen_loss2disc_loss2, gen_loss2,style_loss2,diversity_loss2,cycle_loss2 = self.model(img,domain,og_domain,x = (x1,x2))
 
-            epoch_logs["gen_loss"].append((gen_loss+gen_loss2).mean().item())
-            epoch_logs["disc_loss"].append((disc_loss+disc_loss2).mean().item())
+            epoch_logs["gen_latent_loss"].append((gen_loss).mean().item())
+            epoch_logs["gen_ref_loss"].append((gen_loss2).mean().item())
+            epoch_logs["disc_latent_loss"].append((disc_loss).mean().item())
+            epoch_logs["disc_ref_loss"].append((disc_loss2).mean().item())
+            epoch_logs["style_latent_loss"].append((style_loss).mean().item())
+            epoch_logs["style_ref_loss"].append((style_loss2).mean().item())
+            epoch_logs["diversity_latent_loss"].append((diversity_loss).mean().item())
+            epoch_logs["diversity_ref_loss"].append((diversity_loss2).mean().item())
+            epoch_logs["cycle_latent_loss"].append((cycle_loss).mean().item())
+            epoch_logs["cycle_ref_loss"].append((cycle_loss2).mean().item())
 
-        epoch_logs["gen_loss"] = torch.tensor(epoch_logs["gen_loss"]).mean()
-        epoch_logs["disc_loss"] = torch.tensor(epoch_logs["disc_loss"]).mean()
+        
 
 
         return epoch_logs
