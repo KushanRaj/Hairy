@@ -1,5 +1,5 @@
 dataset : "Celeb"
-root : "E:/celeba_hq"
+root : "/celeba_hq"
 model : "StarGAN"
 img_size : 128
 batch_size : 8
@@ -15,11 +15,11 @@ classes : {0 : "female",
            1 : "male"}
 num_workers : 1
 SPLIT : ['val','train']
-parameter : "E:/Hairy/epochs/epoch"
-parameter2 : "E:/Hairy/div_wt/div"
+parameter : "/Hairy/epochs/epoch"
+parameter2 : "/Hairy/div_wt/div"
 save_every : 5
 show_every : 10
-weight_save : 'E:/Hairy/weights'
+weight_save : '/Hairy/weights'
 style_wt : 1
 cycle_wt : 1
 diversity_wt : 1

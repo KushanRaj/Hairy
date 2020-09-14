@@ -92,17 +92,18 @@ class Trainer:
                 torch.cuda.empty_cache()
                 self.model.model.eval()
                 style = self.model.model.style_enc(ref.to(self.device))[torch.arange(0,self.config["batch_size"]),ref_domain]
-                gen_img = self.model.model.generator(source.to(self.device),style) 
+                gen_img = self.model.model.generator(source.to(self.device),style.to(self.device))
                 grid = torchvision.utils.make_grid(gen_img)   
                 self.writer.add_image("generated_image",grid,i)
 
             self.model.model.diversity_wt = max(0,self.model.model.diversity_wt*(1-i/self.config["epochs"]))
-
+            
             if i % self.config["save_every"] == 0:
+                with torch.no_grad():
                 
-                self.model.save(f'{self.config["weight_save"]}/{self.config["model"]}/{i}')
-                np.save(self.config['parameter'],[self.epochs])
-                np.save(self.config['parameter2'],[self.model.model.diversity_wt])
+                    self.model.save(f'{self.config["weight_save"]}/{self.config["model"]}/{i}')
+                    np.save(self.config['parameter'],[self.epochs])
+                    np.save(self.config['parameter2'],[self.model.model.diversity_wt])
             
         
     

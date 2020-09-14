@@ -145,7 +145,7 @@ class MappingNetwork(nn.Module):
                 z = q(z)
             
             
-            output = torch.stack([i(z) for i in self.unshared],1).cuda() 
+            output = torch.stack([i(z) for i in self.unshared],1)
             
             return output
 
@@ -245,68 +245,71 @@ class Model(nn.Module):
         
         
 
-    def forward(self,img,domain,og_domain,z=None,x=None):
+    def forward(self,img,domain,og_domain,z=None,x=None,train=True):
 
         assert (z is None) != (x is None)
         output = torch.arange(0,domain.size(0),requires_grad=False)
         if z:
             z1,z2 = z
+            z1 = z1.to(self.device) 
+            z2 = z2.to(self.device) 
             l = self.map(z1)[output,domain]
             l2 = self.map(z2)[output,domain]
         else:
             x1,x2 = x
+            x1 = x1.to(self.device) 
+            x2 = x2.to(self.device)
             l = self.style_enc(x1)[output,domain]
             
             l2 = self.style_enc(x2)[output,domain]
         
         
         
-        fake = self.generator(img,l)
+        fake = self.generator(img,l.to(self.device))
 
-        real_cls = self.discriminator(img)[output,og_domain].to(torch.device('cpu'))
+        real_cls = self.discriminator(img)[output,og_domain]
         
-        fake_cls = self.discriminator(fake)[output,domain].to(torch.device('cpu'))
+        fake_cls = self.discriminator(fake)[output,domain]
 
         style = self.style_enc(fake)[output,domain]
 
         real_style = self.style_enc(img)[output,og_domain]
         
-        reconstruct = self.generator(fake,real_style).to(torch.device('cpu'))
+        reconstruct = self.generator(fake,real_style.to(self.device))
         
-        disc_loss = (self.entropy_loss(real_cls,torch.ones_like(real_cls).float().to(torch.device('cpu'))) +
-                     self.entropy_loss(fake_cls,torch.zeros_like(fake_cls).float().to(torch.device('cpu'))))
+        disc_loss = (self.entropy_loss(real_cls,torch.ones_like(real_cls).float()) +
+                     self.entropy_loss(fake_cls,torch.zeros_like(fake_cls).float()))
 
-        gen_adv_loss = self.entropy_loss(fake_cls,torch.ones_like(fake_cls).float().to(torch.device('cpu')))        
+        gen_adv_loss = self.entropy_loss(fake_cls,torch.ones_like(fake_cls).float())        
         
         
-        cycle_loss = torch.abs(img.to(torch.device('cpu'))-reconstruct).mean().to(torch.device('cpu'))
+        cycle_loss = torch.abs(img-reconstruct).mean()
 
-        style_loss = torch.abs(l - style).mean().to(torch.device('cpu'))
+        style_loss = torch.abs(l - style).mean()
 
 
-        fake2 = self.generator(img,l2)
-        diversity_loss = torch.abs(fake-fake2).mean().to(torch.device('cpu'))
-
-        self.dsc_optim.zero_grad()
-        self.map_optim.zero_grad()
-        self.style_optim.zero_grad()
-        self.gen_optim.zero_grad()
-        disc_loss.backward(retain_graph=True)
-        
-        grad = torch.autograd.grad(
-        outputs=disc_loss.sum(), inputs=fake,
-        create_graph=True, retain_graph=True, only_inputs=True
-        )[0]
-        
-        '''
-        grad = []
-        for i in self.discriminator.parameters():
-            grad += [torch.sum(i.grad.pow(2))] 
-        
-        '''
-        penalty = 0.5 * grad.sum(1).mean()
-        
-        disc_loss += penalty.to(torch.device('cpu'))
+        fake2 = self.generator(img,l2.to(self.device))
+        diversity_loss = torch.abs(fake-fake2).mean()
+        if train:
+            self.dsc_optim.zero_grad()
+            self.map_optim.zero_grad()
+            self.style_optim.zero_grad()
+            self.gen_optim.zero_grad()
+                
+            grad = torch.autograd.grad(
+            outputs=disc_loss.sum(), inputs=fake,
+            create_graph=True, retain_graph=True, only_inputs=True
+            )[0]
+            
+            '''
+            grad = []
+            for i in self.discriminator.parameters():
+                grad += [torch.sum(i.grad.pow(2))] 
+            
+            '''
+            penalty = 0.5 * grad.sum(1).mean()
+            
+            disc_loss += penalty
 
         gen_loss = (gen_adv_loss + self.style_wt*style_loss - self.diversity_wt*diversity_loss + self.cycle_wt*cycle_loss).to(torch.device('cpu'))
 
@@ -359,16 +362,16 @@ class StarGan_v1_5():
                     "cycle_latent_loss": [],
                     "cycle_ref_loss": []
         
-        }
+                    }
         
         for indx, data in tqdm(enumerate(dataloader)):
             
             img,og_domain,x1,x2,domain = data
             img = img.to(self.device)
-            x1 = x1.to(self.device)
-            x2 = x2.to(self.device)
-            z1 = torch.normal(torch.tensor([0.5]).repeat(self.batch,self.latent_dim),1).to(self.device)
-            z2 = torch.normal(torch.tensor([0.5]).repeat(self.batch,self.latent_dim),1).to(self.device)
+            x1 = x1
+            x2 = x2
+            z1 = torch.normal(torch.tensor([0.5]).repeat(self.batch,self.latent_dim),1)
+            z2 = torch.normal(torch.tensor([0.5]).repeat(self.batch,self.latent_dim),1)
             
             disc_loss, gen_loss,style_loss,diversity_loss,cycle_loss = self.model(img,domain,og_domain,z = (z1,z2))
 
@@ -426,12 +429,25 @@ class StarGan_v1_5():
         
         return epoch_logs
     
+    @torch.no_grad()
     def valid(self, dataloader):
         torch.cuda.empty_cache()
         self.model.eval()
 
         
-        epoch_logs = {"gen_loss": [],"disc_loss": []}
+        epoch_logs = {
+                    "gen_latent_loss": [],
+                    "gen_ref_loss": [],
+                    "disc_latent_loss": [],
+                    "disc_ref_loss": [],
+                    "style_latent_loss": [],
+                    "style_ref_loss": [],
+                    "diversity_latent_loss": [],
+                    "diversity_ref_loss": [],
+                    "cycle_latent_loss": [],
+                    "cycle_ref_loss": []
+        
+                    }
             
         for indx, data in tqdm(enumerate(dataloader)):
                 
@@ -442,9 +458,9 @@ class StarGan_v1_5():
                 z1 = torch.normal(torch.tensor([0.5]).repeat(self.batch,self.latent_dim),1).to(self.device)
                 z2 = torch.normal(torch.tensor([0.5]).repeat(self.batch,self.latent_dim),1).to(self.device)
                 
-                disc_loss, gen_loss,style_loss,diversity_loss,cycle_loss = self.model(img,domain,og_domain,z = (z1,z2))
+                disc_loss, gen_loss,style_loss,diversity_loss,cycle_loss = self.model(img,domain,og_domain,z = (z1,z2),train=False)
 
-                disc_loss2, gen_loss2,disc_loss2, gen_loss2,style_loss2,diversity_loss2,cycle_loss2 = self.model(img,domain,og_domain,x = (x1,x2))
+                disc_loss2, gen_loss2,style_loss2,diversity_loss2,cycle_loss2 = self.model(img,domain,og_domain,x = (x1,x2),train=False)
 
                 epoch_logs["gen_latent_loss"].append((gen_loss).mean().item())
                 epoch_logs["gen_ref_loss"].append((gen_loss2).mean().item())
