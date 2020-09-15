@@ -347,7 +347,7 @@ class StarGan_v1_5():
     
     
     
-    def train(self, dataloader):
+    def train(self, dataloader,writer,ep):
         torch.cuda.empty_cache()
         self.model.train()
         epoch_logs = {
@@ -400,16 +400,20 @@ class StarGan_v1_5():
             
             self.model.gen_optim.step()
             
-            epoch_logs["gen_latent_loss"].append((gen_loss).mean().item())
-            epoch_logs["gen_ref_loss"].append((gen_loss2).mean().item())
-            epoch_logs["disc_latent_loss"].append((disc_loss).mean().item())
-            epoch_logs["disc_ref_loss"].append((disc_loss2).mean().item())
-            epoch_logs["style_latent_loss"].append((style_loss).mean().item())
-            epoch_logs["style_ref_loss"].append((style_loss2).mean().item())
-            epoch_logs["diversity_latent_loss"].append((diversity_loss).mean().item())
-            epoch_logs["diversity_ref_loss"].append((diversity_loss2).mean().item())
-            epoch_logs["cycle_latent_loss"].append((cycle_loss).mean().item())
-            epoch_logs["cycle_ref_loss"].append((cycle_loss2).mean().item())
+            epoch_logs["gen_latent_loss"].append((gen_loss).item())
+            epoch_logs["gen_ref_loss"].append((gen_loss2).item())
+            epoch_logs["disc_latent_loss"].append((disc_loss).item())
+            epoch_logs["disc_ref_loss"].append((disc_loss2).item())
+            epoch_logs["style_latent_loss"].append((style_loss).item())
+            epoch_logs["style_ref_loss"].append((style_loss2).item())
+            epoch_logs["diversity_latent_loss"].append((diversity_loss).item())
+            epoch_logs["diversity_ref_loss"].append((diversity_loss2).item())
+            epoch_logs["cycle_latent_loss"].append((cycle_loss).item())
+            epoch_logs["cycle_ref_loss"].append((cycle_loss2).item())
+
+            for x,y in epoch_logs.items():
+                
+                writer.add_scalar(f"train/{x}",np.array(y[-1:]),ep+indx)
 
             
 
@@ -430,7 +434,7 @@ class StarGan_v1_5():
         return epoch_logs
     
     @torch.no_grad()
-    def valid(self, dataloader):
+    def valid(self, dataloader,writer,ep):
         torch.cuda.empty_cache()
         self.model.eval()
 
@@ -462,16 +466,25 @@ class StarGan_v1_5():
 
                 disc_loss2, gen_loss2,style_loss2,diversity_loss2,cycle_loss2 = self.model(img,domain,og_domain,x = (x1,x2),train=False)
 
-                epoch_logs["gen_latent_loss"].append((gen_loss).mean().item())
-                epoch_logs["gen_ref_loss"].append((gen_loss2).mean().item())
-                epoch_logs["disc_latent_loss"].append((disc_loss).mean().item())
-                epoch_logs["disc_ref_loss"].append((disc_loss2).mean().item())
-                epoch_logs["style_latent_loss"].append((style_loss).mean().item())
-                epoch_logs["style_ref_loss"].append((style_loss2).mean().item())
-                epoch_logs["diversity_latent_loss"].append((diversity_loss).mean().item())
-                epoch_logs["diversity_ref_loss"].append((diversity_loss2).mean().item())
-                epoch_logs["cycle_latent_loss"].append((cycle_loss).mean().item())
-                epoch_logs["cycle_ref_loss"].append((cycle_loss2).mean().item())
+                
+
+                
+
+                epoch_logs["gen_latent_loss"].append((gen_loss).item())
+                epoch_logs["gen_ref_loss"].append((gen_loss2).item())
+                epoch_logs["disc_latent_loss"].append((disc_loss).item())
+                epoch_logs["disc_ref_loss"].append((disc_loss2).item())
+                epoch_logs["style_latent_loss"].append((style_loss).item())
+                epoch_logs["style_ref_loss"].append((style_loss2).item())
+                epoch_logs["diversity_latent_loss"].append((diversity_loss).item())
+                epoch_logs["diversity_ref_loss"].append((diversity_loss2).item())
+                epoch_logs["cycle_latent_loss"].append((cycle_loss).item())
+                epoch_logs["cycle_ref_loss"].append((cycle_loss2).item())
+
+                for x,y in epoch_logs.items():
+                    writer.add_scalar(f"val/{x}",np.array(y[-1:]),ep+indx)
+            
+                
 
 
         epoch_logs["gen_latent_loss"] = np.mean(epoch_logs["gen_latent_loss"])
