@@ -339,7 +339,6 @@ class StarGan_v1_5():
     def load(self,path):
 
         self.model.load_state_dict(torch.load(path+'model.pth'))
-        self.model.dsc_optim.load_state_dict(torch.load(path))
         self.model.dsc_optim.load_state_dict( torch.load(path+'dsc_optim.pth'))
         self.model.gen_optim.load_state_dict( torch.load(path+'gen_optim.pth'))
         self.model.style_optim.load_state_dict( torch.load(path+'style_optim.pth'))
